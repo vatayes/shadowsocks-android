@@ -9,12 +9,15 @@ buildscript {
         sdkVersion = 28
         compileSdkVersion = 28
         buildToolsVersion = '28.0.3'
+        lifecycleVersion = '2.0.0'
         roomVersion = '2.0.0'
-        workVersion = '1.0.0-alpha12'
+        workVersion = '1.0.0-beta01'
         preferencexVersion = '1.0.0'
         junitVersion = '4.12'
-        androidTestVersion = '1.1.0'
-        androidEspressoVersion = '3.1.0'
+        androidTestVersion = '1.1.1'
+        androidEspressoVersion = '3.1.1'
+        versionCode = 4060550
+        versionName = '4.6.5-nightly'
     }
 
     repositories {
@@ -38,9 +41,6 @@ allprojects {
     repositories {
         google()
         jcenter()
-        maven {
-            url 'https://raw.githubusercontent.com/madeye/maven-repository/master/'
-        }
     }
 }
 

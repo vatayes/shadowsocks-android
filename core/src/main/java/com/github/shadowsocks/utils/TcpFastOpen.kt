@@ -20,14 +20,17 @@
 
 package com.github.shadowsocks.utils
 
-import eu.chainfire.libsuperuser.Shell
 import java.io.File
+import java.io.IOException
 
 object TcpFastOpen {
+    private const val PATH = "/proc/sys/net/ipv4/tcp_fastopen"
+
     /**
      * Is kernel version >= 3.7.1.
      */
     val supported by lazy {
+        if (File(PATH).canRead()) return@lazy true
         val match = """^(\d+)\.(\d+)\.(\d+)""".toRegex().find(System.getProperty("os.version") ?: "")
         if (match == null) false else when (match.groupValues[1].toInt()) {
             in Int.MIN_VALUE..2 -> false
@@ -41,16 +44,19 @@ object TcpFastOpen {
     }
 
     val sendEnabled: Boolean get() {
-        val file = File("/proc/sys/net/ipv4/tcp_fastopen")
+        val file = File(PATH)
         // File.readText doesn't work since this special file will return length 0
-        return file.canRead() && file.bufferedReader().use { it.readText() }.trim().toInt() and 1 > 0
+        // on Android containers like Chrome OS, this file does not exist so we simply judge by the kernel version
+        return if (file.canRead()) file.bufferedReader().use { it.readText() }.trim().toInt() and 1 > 0 else supported
     }
 
-    fun enabled(value: Boolean): String? = if (sendEnabled == value) null else Shell.run("su", arrayOf(
-            "if echo " + (if (value) 3 else 0) + " > /proc/sys/net/ipv4/tcp_fastopen; then",
-            "  echo Success.",
-            "else",
-            "  echo Failed.",
-            "fi"), null, true)?.joinToString("\n")
-    fun enabledAsync(value: Boolean) = thread("TcpFastOpen") { enabled(value) }.join(1000)
+    fun enable(): String? {
+        return try {
+            ProcessBuilder("su", "-c", "echo 3 > $PATH").redirectErrorStream(true).start()
+                    .inputStream.bufferedReader().readText()
+        } catch (e: IOException) {
+            e.localizedMessage
+        }
+    }
+    fun enableAsync() = thread("TcpFastOpen") { enable() }.join(1000)
 }

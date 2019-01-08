@@ -43,6 +43,7 @@ import java.io.File
 import java.io.FileDescriptor
 import java.io.IOException
 import java.lang.reflect.Method
+import java.net.SocketException
 import java.util.*
 import android.net.VpnService as BaseVpnService
 
@@ -83,7 +84,12 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
                 socket.outputStream.write(if (try {
                             val network = underlyingNetwork
                             if (network != null && Build.VERSION.SDK_INT >= 23) {
-                                network.bindSocket(fd)
+                                try {
+                                    network.bindSocket(fd)
+                                } catch (e: SocketException) {
+                                    // silently ignore ENONET (Machine is not on the network)
+                                    if ((e.cause as? ErrnoException)?.errno == 64) e.printStackTrace() else throw e
+                                }
                                 true
                             } else protect(getInt.invoke(fd) as Int)
                         } finally {
@@ -98,7 +104,9 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
             }
         }
     }
-    class NullConnectionException : NullPointerException()
+    inner class NullConnectionException : NullPointerException() {
+        override fun getLocalizedMessage() = getString(R.string.reboot_required)
+    }
 
     init {
         BaseService.register(this)
@@ -246,13 +254,13 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
             cmd += "--dnsgw"
             cmd += "127.0.0.1:${DataStore.portLocalDns}"
         }
-        data.processes.start(cmd) {
+        data.processes.start(cmd, onRestartCallback = {
             try {
                 sendFd(fd)
             } catch (e: ErrnoException) {
                 stopRunner(true, e.message)
             }
-        }
+        })
         return fd
     }
 
@@ -261,11 +269,11 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
         var tries = 0
         val path = File(Core.deviceStorage.noBackupFilesDir, "sock_path").absolutePath
         while (true) try {
-            Thread.sleep(30L shl tries)
+            Thread.sleep(50L shl tries)
             JniHelper.sendFd(fd, path)
             return
         } catch (e: ErrnoException) {
-            if (tries >= 10) throw e
+            if (tries > 5) throw e
             tries += 1
         }
     }
